@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -25,9 +26,11 @@ func (client *Client) receive() {
 		message := make([]byte, 4096)
 		length, err := client.socket.Read(message)
 		if err != nil {
-			fmt.Println(("ERROR: Reading from socket"))
+			fmt.Printf("ERROR - Reading from socket - %s\n", err)
 			client.socket.Close()
-			break
+			fmt.Println("CLIENT - Exiting hangmango client")
+			os.Exit(1)
+
 		}
 		if length > 0 {
 			n := bytes.IndexByte(message, 0)
@@ -36,7 +39,7 @@ func (client *Client) receive() {
 			// splitting out the messages on newlines.
 			sMessages := strings.Split(strings.TrimRight(string(message[:n]), "\n"), "\n")
 			for _, msg := range sMessages {
-				fmt.Printf("RECEIVED: %s\n", msg)
+				fmt.Printf("RECEIVED - %s\n", msg)
 				if msg == "GAME OVER" {
 					os.Exit(0)
 				}
@@ -58,9 +61,9 @@ func (client *Client) send() {
 			}
 			_, err := client.socket.Write(message)
 			if err != nil {
-				fmt.Printf("ERROR: %s\n", err)
-				break
-				// return
+				fmt.Printf("ERROR - %s\n", err)
+				fmt.Println("CLIENT - Exiting hangmango client")
+				os.Exit(1)
 			}
 			// fmt.Printf("TO - %s - %v\n", client.socket.RemoteAddr().String(), string(message))
 		}
@@ -71,9 +74,16 @@ func (client *Client) send() {
 // start the send and receive goroutines, send the client the START GAME
 // message and wait for user input.
 func main() {
-	conn, err := net.Dial("tcp", "localhost:4444")
+	flagDAddress := flag.String("dhost", "127.0.0.1", "Hangmango server IPv4 address to connect to.")
+	flagDPort := flag.Int("dport", 4444, "Port that the target Hangmango server is listening on.")
+	flag.Parse()
+
+	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", *flagDAddress, *flagDPort))
 	if err != nil {
-		// handle error
+		exitString := "CLIENT - Unable to connect to specified hangmango server, likely that it's not running or a network device is preventing the connection. The raw error is below."
+		fmt.Printf(exitString+"\nERROR - %s\n", err)
+		fmt.Println("CLIENT - Exiting hangmango client")
+		os.Exit(1)
 	}
 	client := &Client{socket: conn, data: make(chan []byte), guid: fmt.Sprintf("%d", time.Now().Unix())}
 

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"flag"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 )
@@ -77,7 +79,7 @@ func (manager *ClientManager) sendData(client *Client) {
 // and process data depending on whether the client.state is valid
 // or not. If state is invalid, it creates a new game for the client and responds
 // with the first hint. If state is valid, the received data is passed to hangman
-// to process the game.
+// to process the game.error
 func (manager *ClientManager) receiveData(client *Client) {
 	for {
 		// Create a byte slice limited in length to 4096.
@@ -121,15 +123,43 @@ func (manager *ClientManager) receiveData(client *Client) {
 	}
 }
 
+// parseWordlist ... Append a list of newline separated values from
+// a file specified by the path argument to the answerPool variable
+// defined in package main -> hangman.go
+func parseWordlist(path string) {
+	if path != "" {
+		file, err := os.Open(path)
+		if err != nil {
+			fmt.Println(err)
+		}
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			answerPool = append(answerPool, scanner.Text())
+		}
+
+		if err := scanner.Err(); err != nil {
+			fmt.Println(err)
+		}
+	}
+}
+
 func main() {
 	// Parse flags
-	flagLPort := flag.Int("LPORT", 4444, "Port to listen for incoming connections on.")
+	flagLPort := flag.Int("lport", 4444, "Port to listen for incoming connections on.")
+	flagWordlist := flag.String("wordlist", "", "Path to a newline separated list of words to use as a valid set of answers in a hangman game.")
 	flag.Parse()
 
+	parseWordlist(*flagWordlist)
+
 	fmt.Println("Starting server...")
-	listener, error := net.Listen("tcp", fmt.Sprintf(":%d", *flagLPort))
-	if error != nil {
-		fmt.Println(error)
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *flagLPort))
+	if err != nil {
+		fmt.Println(err)
+		fmt.Println("SERVER - Exiting.")
+		os.Exit(1)
+
 	}
 	fmt.Printf("Started server on %d\n", *flagLPort)
 	manager := ClientManager{
@@ -139,9 +169,10 @@ func main() {
 	}
 	go manager.start()
 	for {
-		connection, _ := listener.Accept()
-		if error != nil {
-			fmt.Println(error)
+		connection, err := listener.Accept()
+		if err != nil {
+			fmt.Printf("Erro accepting connection from client: %s\n", connection.RemoteAddr().String())
+			fmt.Println(err)
 		}
 
 		client := &Client{socket: connection, data: make(chan []byte), guid: fmt.Sprintf("%d", time.Now().Unix())}
