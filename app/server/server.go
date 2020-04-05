@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -26,7 +27,7 @@ type Client struct {
 	guid   string
 }
 
-var regexpHangman = regexp.MustCompile("^[a-zA-Z]+$")
+var regexpHangman = regexp.MustCompile(`^[a-zA-Z]+\s?(?:[a-zA-Z]+)?$`)
 
 // start ... handle connection and disconnection of clients
 // from the ClientManager.
@@ -102,8 +103,7 @@ func (manager *ClientManager) receiveData(client *Client) {
 			if !match {
 				fmt.Printf("FROM - %s - Invalid message received - %s\n", client.socket.RemoteAddr().String(), sMessage)
 				break
-			}
-
+			}\s[a-zA-Z]
 			fmt.Printf("FROM - %s - %s\n", client.socket.RemoteAddr().String(), sMessage)
 			if client.state.valid {
 				client.data <- []byte(client.state.process(sMessage))
