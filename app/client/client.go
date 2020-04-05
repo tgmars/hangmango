@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -17,6 +18,8 @@ type Client struct {
 	data   chan []byte
 	guid   string
 }
+
+var regexpHangman = regexp.MustCompile("^[a-zA-Z]+$")
 
 // receive() ... Reads data off the clients socket into a 4096 byte array and prints,
 // formats them and prints to the user. This function is called
@@ -80,7 +83,7 @@ func main() {
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", *flagDAddress, *flagDPort))
 	if err != nil {
-		exitString := "CLIENT - Unable to connect to specified hangmango server, likely that it's not running or a network device is preventing the connection. The raw error is below."
+		exitString := "ERROR - Unable to connect to specified hangmango server, likely that it's not running or a network device is preventing the connection. The raw error is below."
 		fmt.Printf(exitString+"\nERROR - %s\n", err)
 		fmt.Println("CLIENT - Exiting hangmango client")
 		os.Exit(1)
@@ -91,9 +94,16 @@ func main() {
 	go client.receive()
 	client.data <- []byte("START GAME\n")
 
+	// Wait for user input and send anything that matches simple client side validation to the server.
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		message, _ := reader.ReadString('\n')
-		client.data <- []byte(message)
+		// Validate message is within the regex set.
+		match := regexpHangman.Match([]byte(strings.TrimRight(message, "\n")))
+		if match {
+			client.data <- []byte(message)
+		} else {
+			fmt.Println("Input must be an upper or lowercase character in the english alphabet (a-z or A-Z).")
+		}
 	}
 }

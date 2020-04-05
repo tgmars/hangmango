@@ -5,5 +5,5 @@ function control_c {
 trap control_c SIGINT
 trap control_c SIGTERM
 
-./app/hangmanserver -lport=$1
+./app/hangmanserver -lport=$1 -wordlist="./app/wordlist.txt"
 

@@ -26,6 +26,8 @@ type Client struct {
 	guid   string
 }
 
+var regexpHangman = regexp.MustCompile("^[a-zA-Z]+$")
+
 // start ... handle connection and disconnection of clients
 // from the ClientManager.
 func (manager *ClientManager) start() {
@@ -94,6 +96,14 @@ func (manager *ClientManager) receiveData(client *Client) {
 		if length > 0 {
 			n := bytes.IndexByte(message, 0)
 			sMessage := strings.TrimRight(string(message[:n]), "\n")
+
+			// Validate message is within the regex set.
+			match := regexpHangman.Match([]byte(sMessage))
+			if !match {
+				fmt.Printf("FROM - %s - Invalid message received - %s\n", client.socket.RemoteAddr().String(), sMessage)
+				break
+			}
+
 			fmt.Printf("FROM - %s - %s\n", client.socket.RemoteAddr().String(), sMessage)
 			if client.state.valid {
 				client.data <- []byte(client.state.process(sMessage))
@@ -171,7 +181,7 @@ func main() {
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
-			fmt.Printf("Erro accepting connection from client: %s\n", connection.RemoteAddr().String())
+			fmt.Printf("Error accepting connection from client: %s\n", connection.RemoteAddr().String())
 			fmt.Println(err)
 		}
 
