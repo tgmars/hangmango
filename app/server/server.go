@@ -103,7 +103,7 @@ func (manager *ClientManager) receiveData(client *Client) {
 			if !match {
 				fmt.Printf("FROM - %s - Invalid message received - %s\n", client.socket.RemoteAddr().String(), sMessage)
 				break
-			}\s[a-zA-Z]
+			}
 			fmt.Printf("FROM - %s - %s\n", client.socket.RemoteAddr().String(), sMessage)
 			if client.state.valid {
 				client.data <- []byte(client.state.process(sMessage))
