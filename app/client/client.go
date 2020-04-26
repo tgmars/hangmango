@@ -19,7 +19,11 @@ type Client struct {
 	guid   string
 }
 
+// Regex pattern for basic client side validation of string prior to sending to server.
 var regexpHangman = regexp.MustCompile("^[a-zA-Z]+$")
+
+// Regex pattern for basic client side validation of a string received from the server.
+var regexpValidServerMessage = regexp.MustCompile("^[a-zA-Z_0-9 ]{1,100}$")
 
 // receive() ... Reads data off the clients socket into a 4096 byte array and prints,
 // formats them and prints to the user. This function is called
@@ -42,9 +46,16 @@ func (client *Client) receive() {
 			// splitting out the messages on newlines.
 			sMessages := strings.Split(strings.TrimRight(string(message[:n]), "\n"), "\n")
 			for _, msg := range sMessages {
-				fmt.Printf("RECEIVED - %s\n", msg)
-				if msg == "GAME OVER" {
-					os.Exit(0)
+				match := regexpValidServerMessage.Match(msg)
+				if match {
+					fmt.Printf("RECEIVED - %s\n", msg)
+					if msg == "GAME OVER" {
+						os.Exit(0)
+					}
+				} else {
+					fmt.Println("ERROR - Invalid message received from server.")
+					fmt.Println("CLIENT - Exiting hangmango client")
+					os.Exit(1)
 				}
 			}
 		}

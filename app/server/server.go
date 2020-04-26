@@ -158,7 +158,7 @@ func parseWordlist(path string) {
 func main() {
 	// Parse flags
 	flagLPort := flag.Int("lport", 4444, "Port to listen for incoming connections on.")
-	flagWordlist := flag.String("wordlist", "", "Path to a newline separated list of words to use as a valid set of answers in a hangman game.")
+	flagWordlist := flag.String("wordlist", "", "Path to a newline separated list of words to use as a valid set of answers in a hangman game. (optional)")
 	flag.Parse()
 
 	parseWordlist(*flagWordlist)
