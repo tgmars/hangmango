@@ -117,11 +117,12 @@ func (manager *ClientManager) receiveData(client *Client) {
 				// Move this to a function within hangman.go
 				if sMessage == "START GAME" {
 					client.state = HangmanState{
-						turn:    false,
-						answer:  "",
-						guesses: make([]string, 0),
-						hint:    "",
-						valid:   true,
+						turn:        false,
+						answer:      "",
+						guesses:     make([]string, 0),
+						wordguesses: make([]string, 0),
+						hint:        "",
+						valid:       true,
 					}
 					client.state.NewGame()
 					fmt.Printf("HANGMAN - New game created for this connection: %v\n", client.state)

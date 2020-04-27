@@ -46,7 +46,7 @@ func (client *Client) receive() {
 			// splitting out the messages on newlines.
 			sMessages := strings.Split(strings.TrimRight(string(message[:n]), "\n"), "\n")
 			for _, msg := range sMessages {
-				match := regexpValidServerMessage.Match(msg)
+				match := regexpValidServerMessage.Match([]byte(msg))
 				if match {
 					fmt.Printf("RECEIVED - %s\n", msg)
 					if msg == "GAME OVER" {
@@ -91,6 +91,11 @@ func main() {
 	flagDAddress := flag.String("dhost", "127.0.0.1", "Hangmango server IPv4 address to connect to.")
 	flagDPort := flag.Int("dport", 4444, "Port that the target Hangmango server is listening on.")
 	flag.Parse()
+
+	fmt.Println(`STARTUP - Welcome to hangmango! You will be presented with hints to guess a word selected by the server. 
+	  You can enter guesses as individual english alphabet characters or an entire word. 
+	  Incorrect guesses will deduct from your score per the following forumla: 
+	  10 * (number of letters in secret word) - 2 * (number of characters guessed) - (number of words guessed)`)
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", *flagDAddress, *flagDPort))
 	if err != nil {

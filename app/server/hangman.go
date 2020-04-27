@@ -11,12 +11,13 @@ import (
 // HangmanState ... State of a game per client.
 type HangmanState struct {
 	// client  *Client
-	turn    bool
-	answer  string
-	guesses []string
-	hint    string
-	valid   bool
-	score   int
+	turn        bool
+	answer      string
+	guesses     []string
+	wordguesses []string
+	hint        string
+	valid       bool
+	score       int
 }
 
 var answerPool = []string{"apple", "hello", "laminate", "sorcerer", "willow"}
@@ -34,10 +35,10 @@ func (state *HangmanState) NewGame() {
 // to the client.
 func (state *HangmanState) process(message string) string {
 	message = strings.ToLower(message)
-	state.guesses = append(state.guesses, message)
 
 	if strings.Contains(state.answer, message) {
 		if len(message) == 1 {
+			state.guesses = append(state.guesses, message)
 			// single letter guess
 			positions, err := getPositionsInString(state.answer, message)
 			if err != nil {
@@ -53,6 +54,7 @@ func (state *HangmanState) process(message string) string {
 		}
 		if (len(message) > 1) && (len(message) <= 100) {
 			// word guess, only correct if the client guesses the entire answer.
+			state.wordguesses = append(state.wordguesses, message)
 			if state.answer == message {
 				state.calculateScore()
 				state.valid = false
@@ -78,7 +80,7 @@ func (state *HangmanState) updateHint(positions []int, updateChar string) {
 
 // calculateScore ... Calulate the state's score using the formula prescribed in the criteria.
 func (state *HangmanState) calculateScore() {
-	state.score = 10*len(state.answer) - 2*len(state.guesses)
+	state.score = 10*len(state.answer) - 2*len(state.guesses) - len(state.wordguesses)
 }
 
 // generateStringOfLength ... returns a string of the specified length,
