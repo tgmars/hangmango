@@ -38,7 +38,7 @@ func (manager *ClientManager) start() {
 		select {
 		case connection := <-manager.register:
 			manager.clients[connection] = true
-			fmt.Printf("Client connected from %v\n", connection.socket.RemoteAddr())
+			log.Printf("- Client connected from %v\n", connection.socket.RemoteAddr())
 			// TODO: timeout the connection
 
 		case connection := <-manager.unregister:
@@ -48,7 +48,7 @@ func (manager *ClientManager) start() {
 				delete(manager.clients, connection)
 			}
 			manager.clients[connection] = false
-			fmt.Printf("Client disconnected from %v\n", connection.socket.RemoteAddr())
+			log.Printf("- Client disconnected from %v\n", connection.socket.RemoteAddr())
 		}
 	}
 }
@@ -69,11 +69,11 @@ func (manager *ClientManager) sendData(client *Client) {
 			message = append(message, []byte("\n")...)
 			length, err := client.socket.Write(message)
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 				return
 			}
 			if length > 0 {
-				fmt.Printf("TO - %s - %v\n", client.socket.RemoteAddr().String(), message)
+				log.Printf("- TO - %s - %v\n", client.socket.RemoteAddr().String(), message)
 			}
 		}
 	}
@@ -94,7 +94,7 @@ func (manager *ClientManager) receiveData(client *Client) {
 		// length of the data at the server before it's been stored somewhere in memory.
 		defer func() {
 			if err := recover(); err != nil {
-				log.Println("Goroutine panicked, attempted to store too much data in message, connection closed:", err)
+				log.Println("- ERROR - Goroutine panicked, attempted to store too much data in message, connection closed:", err)
 				manager.unregister <- client
 				client.socket.Close()
 			}
@@ -105,7 +105,6 @@ func (manager *ClientManager) receiveData(client *Client) {
 		message := make([]byte, 4096)
 		length, err := client.socket.Read(message)
 		if err != nil {
-			fmt.Println(length)
 			manager.unregister <- client
 			client.socket.Close()
 			break
@@ -118,10 +117,10 @@ func (manager *ClientManager) receiveData(client *Client) {
 			// Validate message is within the regex set.
 			match := regexpHangman.Match([]byte(sMessage))
 			if !match {
-				fmt.Printf("FROM - %s - Invalid message received - %s\n", client.socket.RemoteAddr().String(), sMessage)
+				log.Printf("- FROM - %s - Invalid message received - %s\n", client.socket.RemoteAddr().String(), sMessage)
 				break
 			}
-			fmt.Printf("FROM - %s - %s\n", client.socket.RemoteAddr().String(), sMessage)
+			log.Printf("- FROM - %s - %s\n", client.socket.RemoteAddr().String(), sMessage)
 			if client.state.valid {
 				client.data <- []byte(client.state.process(sMessage))
 				// If the last call to state.process set valid to false, we know the game is over and can
@@ -142,7 +141,7 @@ func (manager *ClientManager) receiveData(client *Client) {
 						valid:       true,
 					}
 					client.state.NewGame()
-					fmt.Printf("HANGMAN - New game created for this connection: %v\n", client.state)
+					log.Printf("- HANGMAN - New game created for this connection: %v\n", client.state)
 					client.data <- []byte(client.state.hint)
 				}
 			}
@@ -158,7 +157,7 @@ func parseWordlist(path string) {
 	if path != "" {
 		file, err := os.Open(path)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 		}
 		defer file.Close()
 
@@ -168,7 +167,7 @@ func parseWordlist(path string) {
 		}
 
 		if err := scanner.Err(); err != nil {
-			fmt.Println(err)
+			log.Println(err)
 		}
 	}
 }
@@ -181,15 +180,15 @@ func main() {
 
 	parseWordlist(*flagWordlist)
 
-	fmt.Println("Starting server...")
+	log.Println("- Starting server...")
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *flagLPort))
 	if err != nil {
-		fmt.Println(err)
-		fmt.Println("SERVER - Exiting.")
+		log.Println(err)
+		log.Println("- SERVER - Exiting.")
 		os.Exit(1)
 
 	}
-	fmt.Printf("Started server on %d\n", *flagLPort)
+	log.Printf("- Started server on %d\n", *flagLPort)
 	manager := ClientManager{
 		clients:    make(map[*Client]bool),
 		register:   make(chan *Client),
@@ -199,8 +198,8 @@ func main() {
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
-			fmt.Printf("Error accepting connection from client: %s\n", connection.RemoteAddr().String())
-			fmt.Println(err)
+			log.Printf(" - ERROR - Error accepting connection from client: %s\n", connection.RemoteAddr().String())
+			log.Println(err)
 		}
 
 		client := &Client{socket: connection, data: make(chan []byte), guid: fmt.Sprintf("%d", time.Now().Unix())}
