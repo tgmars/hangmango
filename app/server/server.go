@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"regexp"
@@ -83,12 +84,28 @@ func (manager *ClientManager) sendData(client *Client) {
 // or not. If state is invalid, it creates a new game for the client and responds
 // with the first hint. If state is valid, the received data is passed to hangman
 // to process the game.error
+// Implements some basic security checks & anticheat through ensuring data larger than
+// the buffers aren't parsed and catches the errors.
 func (manager *ClientManager) receiveData(client *Client) {
 	for {
-		// Create a byte slice limited in length to 4096.
+		// defer func() ... If we hit a panic because of slice index out of range, cleanly close the goroutine.
+		// Normaly in Go we'd try to parse the length of the message instead of using the recover()
+		// function, but it's an appropriate use for recover() because there's no way to check the
+		// length of the data at the server before it's been stored somewhere in memory.
+		defer func() {
+			if err := recover(); err != nil {
+				log.Println("Goroutine panicked, attempted to store too much data in message, connection closed:", err)
+				manager.unregister <- client
+				client.socket.Close()
+			}
+		}()
+		// Create a byte slice limited in length to 4096 to hold the incoming data, anything over 4096 bytes
+		// will cause the goroutine to panic, unwrapping back up the stack until we hit the defer function
+		// and the call to recover()
 		message := make([]byte, 4096)
 		length, err := client.socket.Read(message)
 		if err != nil {
+			fmt.Println(length)
 			manager.unregister <- client
 			client.socket.Close()
 			break
@@ -191,5 +208,4 @@ func main() {
 		go manager.receiveData(client)
 		go manager.sendData(client)
 	}
-
 }
