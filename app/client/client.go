@@ -20,7 +20,7 @@ type Client struct {
 }
 
 // Regex pattern for basic client side validation of string prior to sending to server.
-var regexpHangman = regexp.MustCompile("^[a-zA-Z]+$")
+var regexpHangman = regexp.MustCompile("[a-zA-Z]+")
 
 // Regex pattern for basic client side validation of a string received from the server.
 var regexpValidServerMessage = regexp.MustCompile("^[a-zA-Z_0-9 ]{1,100}$")
@@ -114,12 +114,17 @@ func main() {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		message, _ := reader.ReadString('\n')
+		message = strings.TrimRight(message, "\n")
 		// Validate message is within the regex set.
-		match := regexpHangman.Match([]byte(strings.TrimRight(message, "\n")))
-		if match {
+		match := regexpHangman.Match([]byte(message))
+		// Validate message is in the regex set & hasn't completely filled the buffer from ReadString (4096 bytes)
+		fmt.Println(message)
+		if match && (len([]byte(message)) <= 4095) {
 			client.data <- []byte(message)
-		} else {
+		} else if match == false {
 			fmt.Println("Input must be an upper or lowercase character in the english alphabet (a-z or A-Z).")
+		} else if len([]byte(message)) >= 4096 {
+			fmt.Println("Length of input must be less than 4096 bytes.")
 		}
 	}
 }

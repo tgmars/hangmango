@@ -28,6 +28,7 @@ type Client struct {
 	guid   string
 }
 
+// Valid regex for servers receipt of client data
 var regexpHangman = regexp.MustCompile(`^[a-zA-Z]+\s?(?:[a-zA-Z]+)?$`)
 
 // start ... handle connection and disconnection of clients
