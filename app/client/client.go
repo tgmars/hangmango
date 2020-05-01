@@ -99,7 +99,8 @@ func main() {
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", *flagDAddress, *flagDPort))
 	if err != nil {
-		exitString := "ERROR - Unable to connect to specified hangmango server, likely that it's not running or a network device is preventing the connection. The raw error is below."
+		exitString := `ERROR - Unable to connect to specified hangmango server, likely that it's not 
+		  running or a network device is preventing the connection. The raw error is below.`
 		fmt.Printf(exitString+"\nERROR - %s\n", err)
 		fmt.Println("CLIENT - Exiting hangmango client")
 		os.Exit(1)
@@ -118,7 +119,6 @@ func main() {
 		// Validate message is within the regex set.
 		match := regexpHangman.Match([]byte(message))
 		// Validate message is in the regex set & hasn't completely filled the buffer from ReadString (4096 bytes)
-		fmt.Println(message)
 		if match && (len([]byte(message)) <= 4095) {
 			client.data <- []byte(message)
 		} else if match == false {

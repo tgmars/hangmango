@@ -13,15 +13,17 @@ import (
 	"time"
 )
 
-//  ClientManager ... manager that maintains
+//  clientManager ... manager that maintains
 // connected clients and channels for connection and disconnnection
-type ClientManager struct {
-	clients    map[*Client]bool
-	register   chan *Client
-	unregister chan *Client
+type clientManager struct {
+	clients    map[*client]bool
+	register   chan *client
+	unregister chan *client
 }
 
-type Client struct {
+// client ... struct that represents a client socket, the data channel
+// to send and receive information on, and currently unused state & guid
+type client struct {
 	socket net.Conn
 	data   chan []byte
 	state  HangmanState
@@ -32,8 +34,8 @@ type Client struct {
 var regexpHangman = regexp.MustCompile(`^[a-zA-Z]+\s?(?:[a-zA-Z]+)?$`)
 
 // start ... handle connection and disconnection of clients
-// from the ClientManager.
-func (manager *ClientManager) start() {
+// from the clientManager.
+func (manager *clientManager) start() {
 	// Keep this gorouting running for the life of execution.
 	for {
 		select {
@@ -43,7 +45,6 @@ func (manager *ClientManager) start() {
 			// TODO: timeout the connection
 
 		case connection := <-manager.unregister:
-			// TODO - Cleanup the game state for this connection
 			if _, ok := manager.clients[connection]; ok {
 				close(connection.data)
 				delete(manager.clients, connection)
@@ -54,10 +55,10 @@ func (manager *ClientManager) start() {
 	}
 }
 
-// sendData ... send data to specified Client within the context of the
-// current ClientManager. Flag characters are appended to the end of the
+// sendData ... send data to specified client within the context of the
+// current clientManager. Flag characters are appended to the end of the
 // message array prior to sending to the client.
-func (manager *ClientManager) sendData(client *Client) {
+func (manager *clientManager) sendData(client *client) {
 	defer client.socket.Close()
 	for {
 		select {
@@ -87,7 +88,7 @@ func (manager *ClientManager) sendData(client *Client) {
 // to process the game.error
 // Implements some basic security checks & anticheat through ensuring data larger than
 // the buffers aren't parsed and catches the errors.
-func (manager *ClientManager) receiveData(client *Client) {
+func (manager *clientManager) receiveData(client *client) {
 	for {
 		// defer func() ... If we hit a panic because of slice index out of range, cleanly close the goroutine.
 		// Normaly in Go we'd try to parse the length of the message instead of using the recover()
@@ -130,8 +131,7 @@ func (manager *ClientManager) receiveData(client *Client) {
 					client.data <- []byte("GAME OVER")
 				}
 			} else {
-				// If message is in list of commands: do what command says
-				// Move this to a function within hangman.go
+				// Make a new game for the client
 				if sMessage == "START GAME" {
 					client.state = HangmanState{
 						turn:        false,
@@ -184,16 +184,16 @@ func main() {
 	log.Println("- Starting server...")
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *flagLPort))
 	if err != nil {
-		log.Println(err)
+		log.Printf("- ERROR - %s\n", err)
 		log.Println("- SERVER - Exiting.")
 		os.Exit(1)
 
 	}
 	log.Printf("- Started server on %d\n", *flagLPort)
-	manager := ClientManager{
-		clients:    make(map[*Client]bool),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+	manager := clientManager{
+		clients:    make(map[*client]bool),
+		register:   make(chan *client),
+		unregister: make(chan *client),
 	}
 	go manager.start()
 	for {
@@ -203,7 +203,7 @@ func main() {
 			log.Println(err)
 		}
 
-		client := &Client{socket: connection, data: make(chan []byte), guid: fmt.Sprintf("%d", time.Now().Unix())}
+		client := &client{socket: connection, data: make(chan []byte), guid: fmt.Sprintf("%d", time.Now().Unix())}
 		manager.register <- client
 		go manager.receiveData(client)
 		go manager.sendData(client)

@@ -96,7 +96,8 @@ func generateStringOfLength(length int, char rune) string {
 
 // getPositionsInString ... returns a slice of integers containing the indexes
 // in message for each occurance of the search character.A maximum of 10 matches will
-// be returned.
+// be returned. For example, if the target was "AAAAA" and the search was 'A',
+// a slice of [0,1,2,3,4] will be returned.
 func getPositionsInString(target string, search string) ([]int, error) {
 	maxlength := 10
 	var indexes []int
