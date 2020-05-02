@@ -1,6 +1,38 @@
 # Hangmango
 Hangmango is a hangman game that operates over tcp sockets. It features a robust server that accepts multiple concurrent connections and a client that implements a basic command line interface.
 
+## Build
+Building a working Hangmango client and server requires execution of `go build` for both the client and server directories.
+
+With the GOPATH variable set as `/home/yourusername/go`, there are two options to fetch the source prior to building:
+1. `go get -v -u github.com/tgmars/hangmango` **NOTE:** this will require setting `HTTPS_PROXY` proxy envar if behind a corporate proxy. 
+  
+    **OR**
+2. Extract the .zip into your $GOPATH, this will create the required folders and extract files in the correct structure.
+
+Following either of the options above, the following structure should be present within your $GOPATH.
+```
+user@host:~/go/src/github.com/tgmars/hangmango$ 
+.                                                                                                                                                                                      
+├── app
+│   ├── client
+│   │   └── client.go
+│   ├── server
+│   │   ├── hangman.go
+│   │   └── server.go
+│   └── wordlist.txt
+├── readme.md
+├── startClient.sh
+└── startServer.sh
+```
+From `~/go/src/github.com/tgmars/hangmango`, execute the following commands to build hangmanclient and hangmanserver into the intended locations. `startClient.sh` and `startServer.sh` require these locations to execute.
+```
+cd app/client/;go build -o ../hangmanclient;cd ../..;
+cd app/server/;go build -o ../hangmanserver;cd ../..;
+```
+You are now ready to run **Hangmango!**
+
+---
 ## Usage
 Hangmango has two binaries for execution, `hangmanserver` and `hangmanclient`, these will parse command line arguments with help text. For simple usage, `startClient.sh` and `startServer.sh` are both scripts that will execute the binaries, taking an IP address and port number as positional arguments.
 #### Primary usage - Bash scripts
@@ -22,7 +54,9 @@ Usage of ../hangmanclient:
   -dport int
         Port that the target Hangmango server is listening on. (default 4444)
 ```
-
+--- 
+## Features and Design Considerations
+The following section describes the wordlist feature and considerations applied in regards to security and architecture of the client-server model.
 ### Wordlists
 A hardcoded list of default words to be selected from for a game of Hangmango includes `apple hello laminate sorcerer willow`, to expand this list the contents of the included `wordlist.txt` should be edited. It must contain newline separated words. The default contents of `wordlist.txt` is `here these are extra words for hangman tangible tarantula fantastic`. 
 
@@ -32,7 +66,7 @@ Whilst there is no protection against MiTM attacks until encryption is implement
 ### Architecture
 Hangmango uses a ClientManager struct and Golang's concept of channels to 'register' and 'unregister' clients from the server. A channel allows us to manipulate data in a concurrency safe manner within Goroutines. Upon receipt of a valid `START GAME` message, a new client object is created. Within that client object, a hangman game state is created and associated with the current connection. 
 
-Both client and server initate their send() and receive() functions as Goroutines. Within each of these Goroutines, data that is transferred over sockets is directed to the data channel for each client. Data that conforms to the required length is then read off of the data channel for further processing per the hangman protocol. Running these functions as Goroutines enables us to scale out for concurrent client connections with ease.
+Both client and server initate their send() and receive() functions as Goroutines. Within each of these Goroutines, data that is transferred over sockets is directed to the data channel for each client. Data that conforms to the required length is then read off of the data channel for further processing per the hangman protocol. Running these functions as Goroutines enables us to scale out for concurrent client connections with ease.   
 
 The code responsible for implementing the rules of the hangman game are stored in `hangman.go`. A new hangman game is created for each valid incoming connection. New games select words from the list, seeded with the current time.   
 
