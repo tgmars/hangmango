@@ -61,7 +61,7 @@ The following section describes the wordlist feature and considerations applied 
 A hardcoded list of default words to be selected from for a game of Hangmango includes `apple hello laminate sorcerer willow`, to expand this list the contents of the included `wordlist.txt` should be edited. It must contain newline separated words. The default contents of `wordlist.txt` is `here these are extra words for hangman tangible tarantula fantastic`. 
 
 ### Security
-Whilst there is no protection against MiTM attacks until encryption is implemented, data validation has been considered in the development of both the client and server. Messages must match regex identifiers, messages greater than specified buffers (at the server) result in errors that are handled gracefully, and information of server operation is logged and verbosely presented to STDOUT.
+Whilst there is no protection against MiTM attacks until encryption is implemented, data validation has been considered in the development of both the client and server. Messages must match regex identifiers, messages greater than specified buffers (at the server) result in errors that are handled gracefully, and information of server operation is logged and verbosely presented to STDOUT. Encryption is a work in progress and is documented under the Encryption header below.
 
 ### Architecture
 Hangmango uses a ClientManager struct and Golang's concept of channels to 'register' and 'unregister' clients from the server. A channel allows us to manipulate data in a concurrency safe manner within Goroutines. Upon receipt of a valid `START GAME` message, a new client object is created. Within that client object, a hangman game state is created and associated with the current connection. 
@@ -86,3 +86,14 @@ After a word guess, the server responds with a hint if the guess was different f
 Once the client has guessed the secret word (by either sending a correct word guess or guessing each letter in the secret word), the server sends the client's score followed by a `GAME OVER` message and then ends the connection.
 
 Any other message sent to or from the client is considered an error, and should result in the receiving party dropping the connection. In particular, any client guess that includes characters outside the range of A-Z or a-z must be considered an error by the server.
+
+### Encrypted Communications
+Prior to operating the layer 7 hangman protocol, we establish an encrypted session betweent the client and server.
+1. Client retrieves the public key from the specified Hangmango server, by sending a `PUBKEYREQ` message to the server. The server responds with it's RSA public key.
+2. Client stores the public key of the server in memory.
+3. Client generates a new keypair and sends a `PUBKEYRESP` that includes the clients public key to the Hangmango server.
+4. Server only accepts this incoming data if its from a known host.  
+5. Server stores the public key of the client in a NoSQL database that maintains all data associated with a client.
+6. Client and server progress to play game over the hangman protocol.
+
+**NOTE:** Some client and server side validation on data received over sockets will need modifying to account for increased data sizes due to encryption and transmission of public keys.  

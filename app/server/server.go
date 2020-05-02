@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-//  clientManager ... manager that maintains
+//  clientManager ... struct that maintains
 // connected clients and channels for connection and disconnnection
 type clientManager struct {
 	clients    map[*client]bool

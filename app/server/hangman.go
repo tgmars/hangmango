@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"strings"
 	"time"
@@ -42,11 +43,11 @@ func (state *HangmanState) process(message string) string {
 			// single letter guess
 			positions, err := getPositionsInString(state.answer, message)
 			if err != nil {
-				fmt.Println(fmt.Errorf("%w", err))
+				log.Printf(" - ERROR - %s", fmt.Errorf("%s", err))
 			}
 			state.updateHint(positions, message)
 			if strings.Index(state.hint, "_") == -1 {
-				// If there's no more underscores in the hint string, the player has guessed the correct word.
+				// If there's no more underscores in the server generated hint string, the player has guessed the correct word.
 				state.calculateScore()
 				state.valid = false
 				return fmt.Sprintf("%d", state.score)
