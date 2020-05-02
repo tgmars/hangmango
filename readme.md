@@ -97,3 +97,13 @@ Prior to operating the layer 7 hangman protocol, we establish an encrypted sessi
 6. Client and server progress to play game over the hangman protocol.
 
 **NOTE:** Some client and server side validation on data received over sockets will need modifying to account for increased data sizes due to encryption and transmission of public keys.  
+
+### Mitigating Cheating
+**Encryption** - Encryption will increase the cost for an attacker for conduct a MitM attack on Hangmango communicates. Public key encryption has been chosen as it scales well in terms of cost of implementation and security. Without a verification of the public key by a CA, and checks that valid certificates are used, the server could be impersonated and the key exchange intercepted, allowing for an attacker masquerade as a valid server. 
+
+**Hashing** - A hash calculated using details of the source, destination and contents of the message is calculated and sent along with the message. If the message has been modified in transit, or a client or servers address has been manipulated, the computed hash at the destination of the message will not match and be discarded. A failed hash message requires a modification to the protocol to pass a retry message back to the sender. Hashing will assure the integrity of the message. 
+
+**Signing** - The encrypted messages must be signed to ensure their authenticity. 
+
+**Sequencing** - A message sequence could be implemented to ensure that clients only receive the message currently intended for them. 
+
