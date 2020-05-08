@@ -89,12 +89,10 @@ Any other message sent to or from the client is considered an error, and should 
 
 ### Encrypted Communications
 Prior to operating the layer 7 hangman protocol, we establish an encrypted session betweent the client and server.
-1. Client retrieves the public key from the specified Hangmango server, by sending a `PUBKEYREQ` message to the server. The server responds with it's RSA public key.
-2. Client stores the public key of the server in memory.
-3. Client generates a new keypair and sends a `PUBKEYRESP` that includes the clients public key to the Hangmango server.
-4. Server only accepts this incoming data if its from a known host.  
-5. Server stores the public key of the client in a NoSQL database that maintains all data associated with a client.
-6. Client and server progress to play game over the hangman protocol.
+1. Client retrieves the public key from the specified Hangmango server, by sending a `PUBKEYREQ` message to the server, along with its own public key. The server responds with it's RSA public key.
+2. Server stores the public key of the client in memoey.
+3. Server sends a `PUBKEYRESP` that includes its own public key to the Hangmango client.
+4. Client and server progress to play game over the hangman protocol.
 
 - Following a PUBKEYREQ message while the client is already running, the client should make their serverPubKey = (rsa.PublicKey{})
 
