@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"regexp"
+	"strings"
 )
 
 // Valid regex for servers receipt of client data
@@ -14,26 +15,31 @@ var regexpHangman = regexp.MustCompile(`^[a-zA-Z]+\s?(?:[a-zA-Z]+)?$`)
 func receiverLogic(client *client, message []byte, length int) {
 	// If the message is valid in length, format, etc, then we can parse it.
 	if length > 0 {
-		// Decrypt the message using our private key
-		// Parse the message in a separate function or go file
+
 		message = message[:length]
-		// this is really bad atm, because it decrypts the PUBKEYREQ message from the client.
+		var sMessage string
+
+		// Our encryption establishment messages are of the form MSG{json-serialsed-rsa.PublicKey}
+		// Our application messages are of the form, message\n so we need to handle them a bit differently.
+		// Unless we move to serialising everything and working with a message struct
+		// Thus, we handle two cases; where the message is encrypted and we parse out the underlying hangman protocol
+		// or it's not encrypted yet because it's still a handshake and we parse it as is.
 		if client.encrypted {
 			message = decrypt(message, serverPrivKey)
+			sMessage = strings.TrimRight(string(message), "\n")
+		} else {
+			sMessage = string(message)
 		}
-
-		// sMessage := strings.TrimRight(string(message), "\n")
-		sMessage := string(message)
 
 		// Validate message is within the regex set.
 		// match := regexpHangman.Match([]byte(sMessage))
 		match := true
 		if !match {
-			log.Printf("- FROM - %s - Invalid message received - %s\n", client.socket.RemoteAddr().String(), sMessage)
+			log.Printf("- FROM - %s - Invalid message received - EL:%d - %s", client.socket.RemoteAddr().String(), length, sMessage)
 		} else {
 			// If the message is valid; we can determine if a new client needs to be created, or to handle encryption
 			// establishment.
-			log.Printf("- FROM - %s - %s\n", client.socket.RemoteAddr().String(), sMessage)
+			log.Printf("- FROM - %s - EL:%d - %s", client.socket.RemoteAddr().String(), length, sMessage)
 			if client.state.valid {
 				client.data <- []byte(client.state.process(sMessage))
 				// If the last call to state.process set valid to false, we know the game is over and can
@@ -92,6 +98,6 @@ func handleStartGameReq(client *client) {
 		valid:       true,
 	}
 	client.state.NewGame()
-	log.Printf("- HANGMAN - New game created for this connection: %v\n", client.state)
+	log.Printf("- HANGMAN - New game created for this connection: %v", client.state)
 	client.data <- []byte(client.state.hint)
 }
