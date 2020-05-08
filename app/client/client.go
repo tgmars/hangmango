@@ -3,8 +3,11 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/rsa"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"regexp"
@@ -12,8 +15,8 @@ import (
 	"time"
 )
 
-// Client ... maintains the client's state and communications channels
-type Client struct {
+// client ... maintains the client's state and communications channels
+type client struct {
 	socket net.Conn
 	data   chan []byte
 	guid   string
@@ -25,10 +28,16 @@ var regexpHangman = regexp.MustCompile("[a-zA-Z]+")
 // Regex pattern for basic client side validation of a string received from the server.
 var regexpValidServerMessage = regexp.MustCompile("^[a-zA-Z_0-9 ]{1,100}$")
 
+// Public key of the server, contains a RSA 2048 byte key once a PUBKEYRESP from the server is parsed.
+var serverPubKey rsa.PublicKey
+
+// serverPrivKey and serverPubKey are RSA 2048 byte length keys
+var clientPrivKey, clientPubKey = initialiseEncryption()
+
 // receive() ... Reads data off the clients socket into a 4096 byte array and prints,
 // formats them and prints to the user. This function is called
 // as a goroutine from main()
-func (client *Client) receive() {
+func (client *client) receive() {
 	for {
 		message := make([]byte, 4096)
 		length, err := client.socket.Read(message)
@@ -40,24 +49,7 @@ func (client *Client) receive() {
 
 		}
 		if length > 0 {
-			n := bytes.IndexByte(message, 0)
-			// Multiple packets sent in rapid succession can fill the message buffer and get parsed
-			// in a single iteration of the go rapidroutine. Thus, we catch this case by
-			// splitting out the messages on newlines.
-			sMessages := strings.Split(strings.TrimRight(string(message[:n]), "\n"), "\n")
-			for _, msg := range sMessages {
-				match := regexpValidServerMessage.Match([]byte(msg))
-				if match {
-					fmt.Printf("RECEIVED - %s\n", msg)
-					if msg == "GAME OVER" {
-						os.Exit(0)
-					}
-				} else {
-					fmt.Println("ERROR - Invalid message received from server.")
-					fmt.Println("CLIENT - Exiting hangmango client")
-					os.Exit(1)
-				}
-			}
+			receiveLogic(message, length, client)
 		}
 	}
 }
@@ -65,7 +57,7 @@ func (client *Client) receive() {
 // send() ... Handles the case where data is put onto
 // the client.data channel. The data is read off the channel
 // and sent out the socket to the server, logging to stdout.
-func (client *Client) send() {
+func (client *client) send() {
 	defer client.socket.Close()
 	for {
 		select {
@@ -105,11 +97,11 @@ func main() {
 		fmt.Println("CLIENT - Exiting hangmango client")
 		os.Exit(1)
 	}
-	client := &Client{socket: conn, data: make(chan []byte), guid: fmt.Sprintf("%d", time.Now().Unix())}
+	client := &client{socket: conn, data: make(chan []byte), guid: fmt.Sprintf("%d", time.Now().Unix())}
 
 	go client.send()
 	go client.receive()
-	client.data <- []byte("START GAME\n")
+	initPubKeyReq(client)
 
 	// Wait for user input and send anything that matches simple client side validation to the server.
 	for {
@@ -127,4 +119,53 @@ func main() {
 			fmt.Println("Length of input must be less than 4096 bytes.")
 		}
 	}
+}
+
+func initPubKeyReq(client *client) {
+	// provide our public key
+	kObj, err := json.Marshal(clientPubKey)
+	if err != nil {
+		log.Printf("- ENCODING - %s", err)
+	}
+	header := []byte("PUBKEYREQ")
+	msg := append(header, kObj...)
+	client.data <- msg
+}
+
+func receiveLogic(message []byte, length int, client *client) {
+	// Multiple packets sent in rapid succession can fill the message buffer and get parsed
+	// in a single iteration of the go rapidroutine. Thus, we catch this case by
+	// splitting out the messages on newlines.
+
+	// Only parse PUBKEYRESP messages if we don't have a server key currently stored.
+	if serverPubKey == (rsa.PublicKey{}) {
+		fmt.Println(message[:10])
+		if bytes.Equal(message[:10], []byte("PUBKEYRESP")) {
+			err := json.Unmarshal(message[10:length], &serverPubKey)
+			if err != nil {
+				log.Printf("- ERROR - Deserialisation error - %s\n", err)
+			} else {
+				log.Printf("Received pubkey size: %d", serverPubKey.Size())
+				fmt.Println(serverPubKey)
+				encrypted := encrypt([]byte("START GAME\n"), serverPubKey)
+				fmt.Println(encrypted)
+				client.data <- encrypted
+			}
+		}
+	}
+
+	// sMessages := strings.Split(strings.TrimRight(string(message[:length]), "\n"), "\n")
+	// for _, msg := range sMessages {
+	// 	match := regexpValidServerMessage.Match([]byte(msg))
+	// 	if match {
+	// 		fmt.Printf("RECEIVED - %s\n", msg)
+	// 		if msg == "GAME OVER" {
+	// 			os.Exit(0)
+	// 		}
+	// 	} else {
+	// 		fmt.Println("ERROR - Invalid message received from server.")
+	// 		fmt.Println("CLIENT - Exiting hangmango client")
+	// 		os.Exit(1)
+	// 	}
+	// }
 }

@@ -2,14 +2,12 @@ package main
 
 import (
 	"bufio"
-	"bytes"
+	"crypto/rsa"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
-	"regexp"
-	"strings"
 	"time"
 )
 
@@ -24,14 +22,16 @@ type clientManager struct {
 // client ... struct that represents a client socket, the data channel
 // to send and receive information on, and currently unused state & guid
 type client struct {
-	socket net.Conn
-	data   chan []byte
-	state  HangmanState
-	guid   string
+	socket    net.Conn
+	data      chan []byte
+	state     HangmanState
+	guid      string
+	pubkey    rsa.PublicKey
+	encrypted bool
 }
 
-// Valid regex for servers receipt of client data
-var regexpHangman = regexp.MustCompile(`^[a-zA-Z]+\s?(?:[a-zA-Z]+)?$`)
+// serverPrivKey and serverPubKey are RSA 2048 byte length keys
+var serverPrivKey, serverPubKey = initialiseEncryption()
 
 // start ... handle connection and disconnection of clients
 // from the clientManager.
@@ -69,13 +69,15 @@ func (manager *clientManager) sendData(client *client) {
 			}
 			// Append a newline character to all of the messages being sent out from the server.
 			message = append(message, []byte("\n")...)
+			// Encrypt our message before we send it.
+			// TODO Encrypt message using public key of the client
 			length, err := client.socket.Write(message)
 			if err != nil {
 				log.Println(err)
 				return
 			}
 			if length > 0 {
-				log.Printf("- TO - %s - %v\n", client.socket.RemoteAddr().String(), message)
+				log.Printf("- TO - %s - %s\n", client.socket.RemoteAddr().String(), message)
 			}
 		}
 	}
@@ -111,43 +113,7 @@ func (manager *clientManager) receiveData(client *client) {
 			client.socket.Close()
 			break
 		}
-		// If the message is valid in length, format, etc, then we can parse it.
-		if length > 0 {
-			n := bytes.IndexByte(message, 0)
-			sMessage := strings.TrimRight(string(message[:n]), "\n")
-
-			// Validate message is within the regex set.
-			match := regexpHangman.Match([]byte(sMessage))
-			if !match {
-				log.Printf("- FROM - %s - Invalid message received - %s\n", client.socket.RemoteAddr().String(), sMessage)
-				break
-			}
-			log.Printf("- FROM - %s - %s\n", client.socket.RemoteAddr().String(), sMessage)
-			if client.state.valid {
-				client.data <- []byte(client.state.process(sMessage))
-				// If the last call to state.process set valid to false, we know the game is over and can
-				// send a followup message to the client indicating so.
-				if !client.state.valid {
-					client.data <- []byte("GAME OVER")
-				}
-			} else {
-				// Make a new game for the client
-				if sMessage == "START GAME" {
-					client.state = HangmanState{
-						turn:        false,
-						answer:      "",
-						guesses:     make([]string, 0),
-						wordguesses: make([]string, 0),
-						hint:        "",
-						valid:       true,
-					}
-					client.state.NewGame()
-					log.Printf("- HANGMAN - New game created for this connection: %v\n", client.state)
-					client.data <- []byte(client.state.hint)
-				}
-			}
-
-		}
+		receiverLogic(client, message, length)
 	}
 }
 
@@ -179,7 +145,10 @@ func main() {
 	flagWordlist := flag.String("wordlist", "", "Path to a newline separated list of words to use as a valid set of answers in a hangman game. (optional)")
 	flag.Parse()
 
+	log.Println("- Parsing wordlist...")
 	parseWordlist(*flagWordlist)
+
+	log.Println("- Generating keypair...")
 
 	log.Println("- Starting server...")
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *flagLPort))
@@ -199,7 +168,7 @@ func main() {
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
-			log.Printf(" - ERROR - Error accepting connection from client: %s\n", connection.RemoteAddr().String())
+			log.Printf("- ERROR - Error accepting connection from client: %s\n", connection.RemoteAddr().String())
 			log.Println(err)
 		}
 

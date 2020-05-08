@@ -96,6 +96,8 @@ Prior to operating the layer 7 hangman protocol, we establish an encrypted sessi
 5. Server stores the public key of the client in a NoSQL database that maintains all data associated with a client.
 6. Client and server progress to play game over the hangman protocol.
 
+- Following a PUBKEYREQ message while the client is already running, the client should make their serverPubKey = (rsa.PublicKey{})
+
 **NOTE:** Some client and server side validation on data received over sockets will need modifying to account for increased data sizes due to encryption and transmission of public keys.  
 
 ### Mitigating Cheating

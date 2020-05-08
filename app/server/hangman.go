@@ -37,34 +37,32 @@ func (state *HangmanState) NewGame() {
 func (state *HangmanState) process(message string) string {
 	message = strings.ToLower(message)
 
-	if strings.Contains(state.answer, message) {
-		if len(message) == 1 {
-			state.guesses = append(state.guesses, message)
-			// single letter guess
-			positions, err := getPositionsInString(state.answer, message)
-			if err != nil {
-				log.Printf(" - ERROR - %s", fmt.Errorf("%s", err))
-			}
-			state.updateHint(positions, message)
-			if strings.Index(state.hint, "_") == -1 {
-				// If there's no more underscores in the server generated hint string, the player has guessed the correct word.
-				state.calculateScore()
-				state.valid = false
-				return fmt.Sprintf("%d", state.score)
-			}
+	if len(message) == 1 {
+		state.guesses = append(state.guesses, message)
+		// single letter guess
+		positions, err := getPositionsInString(state.answer, message)
+		if err != nil {
+			log.Printf(" - ERROR - %s", fmt.Errorf("%s", err))
 		}
-		if (len(message) > 1) && (len(message) <= 100) {
-			// word guess, only correct if the client guesses the entire answer.
-			state.wordguesses = append(state.wordguesses, message)
-			if state.answer == message {
-				state.calculateScore()
-				state.valid = false
-				return fmt.Sprintf("%d", state.score)
-			}
+		state.updateHint(positions, message)
+		if strings.Index(state.hint, "_") == -1 {
+			// If there's no more underscores in the server generated hint string, the player has guessed the correct word.
+			state.calculateScore()
+			state.valid = false
+			return fmt.Sprintf("%d", state.score)
 		}
-		if len(message) > 100 {
-			return "Guesses are limited to 100 characters in length."
+	}
+	if (len(message) > 1) && (len(message) <= 100) {
+		// word guess, only correct if the client guesses the entire answer.
+		state.wordguesses = append(state.wordguesses, message)
+		if state.answer == message {
+			state.calculateScore()
+			state.valid = false
+			return fmt.Sprintf("%d", state.score)
 		}
+	}
+	if len(message) > 100 {
+		return "Guesses are limited to 100 characters in length."
 	}
 	return state.hint
 }
