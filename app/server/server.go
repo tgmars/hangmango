@@ -28,10 +28,18 @@ type client struct {
 	guid      string
 	pubkey    rsa.PublicKey
 	encrypted bool
+	message   message
+}
+
+type message struct {
+	Mtype     string `json:",omitempty"`
+	Content   []byte `json:",omitempty"`
+	Hash      []byte `json:",omitempty"`
+	Signature []byte `json:",omitempty"`
 }
 
 // serverPrivKey and serverPubKey are RSA 2048 byte length keys
-var serverPrivKey, serverPubKey = initialiseEncryption()
+var serverPrivKey, serverPubKey, serverPubKeyJSON = initialiseEncryption()
 
 // start ... handle connection and disconnection of clients
 // from the clientManager.
@@ -41,7 +49,7 @@ func (manager *clientManager) start() {
 		select {
 		case connection := <-manager.register:
 			manager.clients[connection] = true
-			log.Printf("- Client connected from %v\n", connection.socket.RemoteAddr())
+			log.Printf("- Client connected from %v", connection.socket.RemoteAddr())
 			// TODO: timeout the connection
 
 		case connection := <-manager.unregister:
@@ -50,7 +58,7 @@ func (manager *clientManager) start() {
 				delete(manager.clients, connection)
 			}
 			manager.clients[connection] = false
-			log.Printf("- Client disconnected from %v\n", connection.socket.RemoteAddr())
+			log.Printf("- Client disconnected from %v", connection.socket.RemoteAddr())
 		}
 	}
 }
@@ -67,18 +75,14 @@ func (manager *clientManager) sendData(client *client) {
 			if !ok {
 				return
 			}
-			// Append a newline character to all of the messages being sent out from the server.
-			message = append(message, []byte("\n")...)
-			// Encrypt our message before we send it.
-			// TODO Encrypt message using public key of the client
-			length, err := client.socket.Write(message)
+			_, err := client.socket.Write(message)
+			// length, err := client.socket.Write(message)
 			if err != nil {
 				log.Println(err)
 				return
 			}
-			if length > 0 {
-				log.Printf("- TO - %s - %s\n", client.socket.RemoteAddr().String(), message)
-			}
+			// if length > 0 {
+			// }
 		}
 	}
 }

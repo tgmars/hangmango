@@ -4,10 +4,11 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/json"
 	"log"
 )
 
-func initialiseEncryption() (rsa.PrivateKey, rsa.PublicKey) {
+func initialiseEncryption() (rsa.PrivateKey, rsa.PublicKey, []byte) {
 	size := 2048
 	key, err := rsa.GenerateKey(rand.Reader, size)
 	if err != nil {
@@ -17,7 +18,11 @@ func initialiseEncryption() (rsa.PrivateKey, rsa.PublicKey) {
 	if err != nil {
 		log.Printf(" - CRYPTO - key failed to validate - %s", err)
 	}
-	return *key, key.PublicKey
+	kObj, err := json.Marshal(key.PublicKey)
+	if err != nil {
+		log.Printf("- ENCODING - %s", err)
+	}
+	return *key, key.PublicKey, kObj
 }
 
 func encrypt(message []byte, pubkey rsa.PublicKey) []byte {

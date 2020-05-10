@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/rsa"
 	"encoding/json"
 	"flag"
@@ -17,9 +16,18 @@ import (
 
 // client ... maintains the client's state and communications channels
 type client struct {
-	socket net.Conn
-	data   chan []byte
-	guid   string
+	socket    net.Conn
+	data      chan []byte
+	guid      string
+	encrypted bool
+	message   message
+}
+
+type message struct {
+	Mtype     string `json:",omitempty"`
+	Content   []byte `json:",omitempty"`
+	Hash      []byte `json:",omitempty"`
+	Signature []byte `json:",omitempty"`
 }
 
 // Regex pattern for basic client side validation of string prior to sending to server.
@@ -97,6 +105,8 @@ func main() {
 		fmt.Println("CLIENT - Exiting hangmango client")
 		os.Exit(1)
 	}
+
+	// Initialise the client struct that represents this client
 	client := &client{socket: conn, data: make(chan []byte), guid: fmt.Sprintf("%d", time.Now().Unix())}
 
 	go client.send()
@@ -105,6 +115,7 @@ func main() {
 
 	// Wait for user input and send anything that matches simple client side validation to the server.
 	for {
+		// Block until
 		reader := bufio.NewReader(os.Stdin)
 		message, _ := reader.ReadString('\n')
 		message = strings.TrimRight(message, "\n")
@@ -112,7 +123,8 @@ func main() {
 		match := regexpHangman.Match([]byte(message))
 		// Validate message is in the regex set & hasn't completely filled the buffer from ReadString (4096 bytes)
 		if match && (len([]byte(message)) <= 4095) {
-			client.data <- []byte(message)
+			messageJSON := generateHangmanJSONMessage([]byte(message))
+			encryptJSONAddToChannel(client, messageJSON)
 		} else if match == false {
 			fmt.Println("Input must be an upper or lowercase character in the english alphabet (a-z or A-Z).")
 		} else if len([]byte(message)) >= 4096 {
@@ -123,49 +135,91 @@ func main() {
 
 func initPubKeyReq(client *client) {
 	// provide our public key
-	kObj, err := json.Marshal(clientPubKey)
+	clientPubKeyBytes, err := json.Marshal(clientPubKey)
 	if err != nil {
 		log.Printf("- ENCODING - %s", err)
 	}
-	header := []byte("PUBKEYREQ")
-	msg := append(header, kObj...)
-	client.data <- msg
+	// fmt.Println(string(clientPubKeyBytes))
+	msg := message{Mtype: "PUBKEYREQ", Content: clientPubKeyBytes}
+	bmsg, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("- ENCODING - %s", err)
+	}
+	// fmt.Printf("%v\n", msg)
+	// fmt.Printf("%s\n", string(bmsg))
+	client.data <- bmsg
+	// Clear the message to nil
+	client.message = message{}
+
 }
 
-func receiveLogic(message []byte, length int, client *client) {
+func receiveLogic(input []byte, length int, client *client) {
 	// Multiple packets sent in rapid succession can fill the message buffer and get parsed
 	// in a single iteration of the go rapidroutine. Thus, we catch this case by
 	// splitting out the messages on newlines.
-
+	input = input[:length]
 	// Only parse PUBKEYRESP messages if we don't have a server key currently stored.
-	if serverPubKey == (rsa.PublicKey{}) {
-		fmt.Println(message[:10])
-		if bytes.Equal(message[:10], []byte("PUBKEYRESP")) {
-			err := json.Unmarshal(message[10:length], &serverPubKey)
-			if err != nil {
-				log.Printf("- ERROR - Deserialisation error - %s\n", err)
-			} else {
-				log.Printf("Received pubkey size: %d", serverPubKey.Size())
-				fmt.Println(serverPubKey)
-				encrypted := encrypt([]byte("START GAME\n"), serverPubKey)
-				fmt.Println(encrypted)
-				client.data <- encrypted
-			}
-		}
+	// This implies that the message we'll receive won't be encrypted and can be treated as such.
+
+	if client.encrypted == true {
+		log.Println("Expecting encrypted data - need some way to verify this.")
+		input = decrypt(input, clientPrivKey)
+		unMarshalMessage(input, client)
+	} else {
+		unMarshalMessage(input, client)
 	}
 
-	// sMessages := strings.Split(strings.TrimRight(string(message[:length]), "\n"), "\n")
-	// for _, msg := range sMessages {
-	// 	match := regexpValidServerMessage.Match([]byte(msg))
-	// 	if match {
-	// 		fmt.Printf("RECEIVED - %s\n", msg)
-	// 		if msg == "GAME OVER" {
-	// 			os.Exit(0)
-	// 		}
-	// 	} else {
-	// 		fmt.Println("ERROR - Invalid message received from server.")
-	// 		fmt.Println("CLIENT - Exiting hangmango client")
-	// 		os.Exit(1)
-	// 	}
-	// }
+	// now we can access client.message.fields to parse out the different cases
+	if client.message.Mtype == "PUBKEYRESP" {
+		handlePubKeyResp(client)
+	}
+	// only hangmango application messages should meet this criteria.
+	if (client.message.Mtype == "") && (len(client.message.Content) > 0) {
+		fmt.Printf("%s\n", client.message.Content)
+	}
+}
+
+// Handle the message containing a servers public key and initiate
+// the game with them.
+func handlePubKeyResp(client *client) {
+	err := json.Unmarshal(client.message.Content, &serverPubKey)
+	if err != nil {
+		log.Printf("- ERROR - Deserialisation error - %s\n", err)
+	} else {
+		// log.Printf("Received pubkey size: %d", serverPubKey.Size())
+		// fmt.Println(serverPubKey)
+		client.encrypted = true
+		msg := message{Content: []byte("START GAME")}
+		bmsg, err := json.Marshal(msg)
+		if err != nil {
+			log.Printf("- ENCODING - %s", err)
+		}
+		encrypted := encrypt(bmsg, serverPubKey)
+		client.data <- encrypted
+		// Clear the message to nil
+		client.message = message{}
+	}
+}
+
+func unMarshalMessage(message []byte, client *client) {
+	err := json.Unmarshal(message, &client.message)
+	if err != nil {
+		log.Printf("- ERROR - Deserialisation error occured for incoming message - %s\n", err)
+	}
+}
+
+func encryptJSONAddToChannel(client *client, plaintextMessageJSON []byte) {
+	encrypted := encrypt(plaintextMessageJSON, serverPubKey)
+	client.data <- encrypted
+	log.Printf("- TO - %s - %s\n", client.socket.RemoteAddr().String(), plaintextMessageJSON)
+	client.message = message{}
+}
+
+func generateHangmanJSONMessage(msg []byte) []byte {
+	messageStruct := message{Content: msg}
+	messageBytes, err := json.Marshal(messageStruct)
+	if err != nil {
+		log.Printf("- ENCODING - %s", err)
+	}
+	return messageBytes
 }
