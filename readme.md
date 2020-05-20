@@ -87,8 +87,9 @@ Once the client has guessed the secret word (by either sending a correct word gu
 
 Any other message sent to or from the client is considered an error, and should result in the receiving party dropping the connection. In particular, any client guess that includes characters outside the range of A-Z or a-z must be considered an error by the server.
 
-### Encrypted Communications
+### Encrypted & Signed Communications
 Prior to operating the layer 7 hangman protocol, we establish an encrypted session betweent the client and server.
+1. Client is bundled with a public key certificate used for verifying messages sent from the server.
 1. Client retrieves the public key from the specified Hangmango server, by sending a `PUBKEYREQ` message to the server, along with its own public key. The server responds with it's RSA public key.
 2. Server stores the public key of the client in memoey.
 3. Server sends a `PUBKEYRESP` that includes its own public key to the Hangmango client.
@@ -98,6 +99,11 @@ Prior to operating the layer 7 hangman protocol, we establish an encrypted sessi
 
 **NOTE:** Some client and server side validation on data received over sockets will need modifying to account for increased data sizes due to encryption and transmission of public keys.  
 
+We do not support Perfect Forward Secrecy (PFS), a symmetric private key is exchanged between client and server following public key based encryption being established. 
+Different keypairs are used for signing and encryption.
+We do assume that a CA would verify the certificate held by the client.
+Certificate held by the client needs to be a chain including the CA?
+
 ### Mitigating Cheating
 **Encryption** - Encryption will increase the cost for an attacker for conduct a MitM attack on Hangmango communicates. Public key encryption has been chosen as it scales well in terms of cost of implementation and security. Without a verification of the public key by a CA, and checks that valid certificates are used, the server could be impersonated and the key exchange intercepted, allowing for an attacker masquerade as a valid server. 
 
@@ -106,4 +112,22 @@ Prior to operating the layer 7 hangman protocol, we establish an encrypted sessi
 **Signing** - The encrypted messages must be signed to ensure their authenticity. 
 
 **Sequencing** - A message sequence could be implemented to ensure that clients only receive the message currently intended for them. 
+
+**Verified authenticity of the key exchange**
+Because two keypairs are used for encryption and signing, it's important to verify that when a hangmango client requests a new key from a server, that they're interacting with a server that can demonstrate itself as an authenticate hangmango server, trusted to distribute a hangmango public key for encrypted key exchanges. 
+**Client uses its private key to sign messages**
+### Improvements ###
+Encrypt private.pem on disk
+
+Strict sequence numbers to ensure message order is maintained
+
+From - (https://en.wikipedia.org/wiki/Authenticated_encryption) **Security guarantees**
+
+
+In addition to protecting message integrity and confidentiality, authenticated encryption can provide security against chosen ciphertext attack. In these attacks, an adversary attempts to gain an advantage against a cryptosystem (e.g., information about the secret decryption key) by submitting carefully chosen ciphertexts to some "decryption oracle" and analyzing the decrypted results. Authenticated encryption schemes can recognize improperly-constructed ciphertexts and refuse to decrypt them. This, in turn, prevents the attacker from requesting the decryption of any ciphertext unless it was generated correctly using the encryption algorithm, thus implying that the plaintext is already known. Implemented correctly, authenticated encryption removes the usefulness of the decryption oracle, by preventing an attacker from gaining useful information that the attacker does not already possess.
+
+Many specialized authenticated encryption modes have been developed for use with symmetric block ciphers. However, authenticated encryption can be generically constructed by combining an encryption scheme and a message authentication code (MAC), provided that:
+
+The encryption scheme is semantically secure under a chosen plaintext attack.
+The MAC function is unforgeable under a chosen message attack.
 

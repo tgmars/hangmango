@@ -1,3 +1,5 @@
 .vscode
 hangmanclient
 hangmanserver
+**.pem
+**.crt

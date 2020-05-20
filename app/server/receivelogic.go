@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -24,13 +25,7 @@ func receiverLogic(client *client, message []byte, length int) {
 		// Unless we move to serialising everything and working with a message struct
 		// Thus, we handle two cases; where the message is encrypted and we parse out the underlying hangman protocol
 		// or it's not encrypted yet because it's still a handshake and we parse it as is.
-		if client.encrypted {
-			message = decrypt(message, serverPrivKey)
-			unMarshalMessage(message, client)
-		} else {
-			unMarshalMessage(message, client)
-		}
-
+		unMarshalMessage(message, client)
 		log.Printf("- DEBUG - parsed message struct - %v", client.message)
 
 		// Validate message is within the regex set.
@@ -45,12 +40,14 @@ func receiverLogic(client *client, message []byte, length int) {
 			// also need to check if client.mesage.Content is valid within the character set here.
 			if client.state.valid && client.message.Mtype == "" && len(client.message.Content) > 0 {
 				// Pass the plaintext message off to hangman to process it
-				messageJSON := generateHangmanJSONMessage([]byte(client.state.process(string(client.message.Content))))
-				encryptJSONAddToChannel(client, messageJSON)
+				hangmanResponse := client.state.process(string(client.message.Content))
 				// If the last call to state.process set valid to false, we know the game is over and can
-				// send a followup message to the client indicating so.
+				// send a followup message to the client indicating so. Otherwise keep playing the game.
 				if !client.state.valid {
-					handleGameOver(client)
+					handleGameOver(client, hangmanResponse)
+				} else {
+					messageJSON := generateHangmanJSONMessage([]byte(hangmanResponse))
+					encryptJSONAddToChannel(client, messageJSON)
 				}
 			} else {
 				// Handle a PUBKEYREQ message
@@ -89,9 +86,14 @@ func handlePubKeyReq(client *client) {
 		if err != nil {
 			log.Printf("- ENCODING - %s", err)
 		}
-		client.data <- bmsg
+
+		benc := generateEncryptedMessageAndSign(bmsg, serverSignPrivKey)
+
+		log.Printf("- TO - %s", benc)
+		client.data <- benc
 		// Clear the message to nil
 		client.message = message{}
+		client.encmsg = encryptedMessage{}
 	}
 }
 
@@ -113,14 +115,41 @@ func handleStartGameReq(client *client) {
 	encryptJSONAddToChannel(client, messageJSON)
 }
 
-// handleGameOver ... partially implemented, does not send score result yet
-func handleGameOver(client *client) {
-	messageJSON := generateHangmanJSONMessage([]byte("GAME OVER"))
-	encryptJSONAddToChannel(client, messageJSON)
+// handleGameOver ... Generate a message with Mtype=GAME OVER and Content=score, encrypt and add to channel.
+func handleGameOver(client *client, score string) {
+	messageStruct := message{Mtype: "GAME OVER", Content: []byte(score)}
+	messageBytes, err := json.Marshal(messageStruct)
+	if err != nil {
+		log.Printf("- ENCODING - %s", err)
+	}
+	encryptJSONAddToChannel(client, messageBytes)
 }
 
+// unMarshalMessage is responsible for parsing encryptedMessage structs,
+// verifying hashes to ensure sender identity and unmarshalling data back
+// into message structs.
 func unMarshalMessage(message []byte, client *client) {
-	err := json.Unmarshal(message, &client.message)
+	// Unmarshal our message into an encmsg struct
+	err := json.Unmarshal(message, &client.encmsg)
+	if err != nil {
+		log.Printf("- ERROR - Deserialisation error occured for incoming encryptedMessage - %s\n", err)
+	}
+
+	// Verify the signature of the message
+	// hashing := crypto.SHA256
+	// err = rsa.VerifyPSS(serverCertificatePubkey, hashing, client.encmsg.B, serverCertificateBytes, nil)
+	// if err != nil {
+	// 	log.Printf("- ERROR - Failed to verify message signature - %s\n", err)
+	// }
+
+	var plaintext []byte
+	if client.encrypted == true {
+		plaintext = decrypt(client.encmsg.A, serverPrivKey)
+	} else {
+		plaintext = client.encmsg.A
+	}
+
+	err = json.Unmarshal(plaintext, &client.message)
 	if err != nil {
 		log.Printf("- ERROR - Deserialisation error occured for incoming message - %s\n", err)
 	}
@@ -128,7 +157,8 @@ func unMarshalMessage(message []byte, client *client) {
 
 func encryptJSONAddToChannel(client *client, plaintextMessageJSON []byte) {
 	encrypted := encrypt(plaintextMessageJSON, client.pubkey)
-	client.data <- encrypted
+	encryptedAndValidated := generateEncryptedMessageAndSign(encrypted, serverSignPrivKey)
+	client.data <- encryptedAndValidated
 	log.Printf("- TO - %s - PT:%s\n", client.socket.RemoteAddr().String(), plaintextMessageJSON)
 	client.message = message{}
 }
@@ -140,4 +170,18 @@ func generateHangmanJSONMessage(msg []byte) []byte {
 		log.Printf("- ENCODING - %s", err)
 	}
 	return messageBytes
+}
+
+// Parse a byte representation of a message struct into a encryptedMessage struct and
+// attach a message authentication token (signed copy of the message) to the encrypted messageStruct
+func generateEncryptedMessageAndSign(messageBytes []byte, certificatePrivkey rsa.PrivateKey) []byte {
+	// sign the byte encoded representation of the message struct
+	enc := encryptedMessage{A: messageBytes}
+	enc.Sign(&serverSignPrivKey)
+
+	benc, err := json.Marshal(enc)
+	if err != nil {
+		log.Printf("- ENCODING - %s", err)
+	}
+	return benc
 }

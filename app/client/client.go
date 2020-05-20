@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"crypto"
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -21,6 +23,7 @@ type client struct {
 	guid      string
 	encrypted bool
 	message   message
+	encmsg    encryptedMessage
 }
 
 type message struct {
@@ -28,6 +31,13 @@ type message struct {
 	Content   []byte `json:",omitempty"`
 	Hash      []byte `json:",omitempty"`
 	Signature []byte `json:",omitempty"`
+}
+
+// encryptedMessage ... Maintains two fields, A is the encrypted message and the other
+// is the MAC validation/signature field.
+type encryptedMessage struct {
+	A []byte `json:"A,omitempty"`
+	B []byte `json:"B,omitempty"`
 }
 
 // Regex pattern for basic client side validation of string prior to sending to server.
@@ -38,6 +48,8 @@ var regexpValidServerMessage = regexp.MustCompile("^[a-zA-Z_0-9 ]{1,100}$")
 
 // Public key of the server, contains a RSA 2048 byte key once a PUBKEYRESP from the server is parsed.
 var serverPubKey rsa.PublicKey
+
+var serverCertificate, serverCertificateBytes, serverCertificatePubkey = initialiseSigning()
 
 // serverPrivKey and serverPubKey are RSA 2048 byte length keys
 var clientPrivKey, clientPubKey = initialiseEncryption()
@@ -57,7 +69,14 @@ func (client *client) receive() {
 
 		}
 		if length > 0 {
+			// Multiple packets sent in rapid succession can fill the message buffer and get parsed
+			// in a single iteration of the go routine. Thus, we catch this case by
+			// splitting out the messages on newlines.
+			// sMessages := strings.Split(strings.TrimRight(string(message[:n]), "\n"), "\n")
+			// messages := bytes.Split(message, []byte("\n"))
+			// for _, msg := range messages {
 			receiveLogic(message, length, client)
+			// }
 		}
 	}
 }
@@ -73,6 +92,7 @@ func (client *client) send() {
 			if !ok {
 				return
 			}
+			// message = append(message, '\n')
 			_, err := client.socket.Write(message)
 			if err != nil {
 				fmt.Printf("ERROR - %s\n", err)
@@ -145,9 +165,9 @@ func initPubKeyReq(client *client) {
 	if err != nil {
 		log.Printf("- ENCODING - %s", err)
 	}
-	// fmt.Printf("%v\n", msg)
+	encmsg := generateEncryptedMessage(bmsg)
 	// fmt.Printf("%s\n", string(bmsg))
-	client.data <- bmsg
+	client.data <- encmsg
 	// Clear the message to nil
 	client.message = message{}
 
@@ -161,17 +181,16 @@ func receiveLogic(input []byte, length int, client *client) {
 	// Only parse PUBKEYRESP messages if we don't have a server key currently stored.
 	// This implies that the message we'll receive won't be encrypted and can be treated as such.
 
-	if client.encrypted == true {
-		log.Println("Expecting encrypted data - need some way to verify this.")
-		input = decrypt(input, clientPrivKey)
-		unMarshalMessage(input, client)
-	} else {
-		unMarshalMessage(input, client)
-	}
+	log.Printf("- DEBUG - FROM - Client received: %s", input)
+	unMarshalMessage(input, client)
 
 	// now we can access client.message.fields to parse out the different cases
 	if client.message.Mtype == "PUBKEYRESP" {
 		handlePubKeyResp(client)
+	}
+	if client.message.Mtype == "GAME OVER" {
+		fmt.Printf("Game over! You scored: %s\n", client.message.Content)
+		os.Exit(0)
 	}
 	// only hangmango application messages should meet this criteria.
 	if (client.message.Mtype == "") && (len(client.message.Content) > 0) {
@@ -194,15 +213,36 @@ func handlePubKeyResp(client *client) {
 		if err != nil {
 			log.Printf("- ENCODING - %s", err)
 		}
-		encrypted := encrypt(bmsg, serverPubKey)
-		client.data <- encrypted
-		// Clear the message to nil
-		client.message = message{}
+		encryptJSONAddToChannel(client, bmsg)
 	}
 }
 
+// unMarshalMessage is responsible for parsing encryptedMessage structs,
+// verifying hashes to ensure sender identity and unmarshalling data back
+// into message structs.
 func unMarshalMessage(message []byte, client *client) {
-	err := json.Unmarshal(message, &client.message)
+	// Unmarshal our message into an encmsg struct
+	err := json.Unmarshal(message, &client.encmsg)
+	if err != nil {
+		log.Printf("- ERROR - Deserialisation error occured for incoming encryptedMessage - %s\n", err)
+	}
+	// Verify the signature of the message
+	hash := sha256.New()
+	hash.Write(client.encmsg.A)
+	encmsgAHashed := hash.Sum(nil)
+	err = rsa.VerifyPSS(serverCertificatePubkey, crypto.SHA256, encmsgAHashed, client.encmsg.B, nil)
+	if err != nil {
+		log.Printf("- ERROR - Failed to verify message signature - %s\n", err)
+	}
+
+	var plaintext []byte
+	if client.encrypted == true {
+		plaintext = decrypt(client.encmsg.A, clientPrivKey)
+	} else {
+		plaintext = client.encmsg.A
+	}
+
+	err = json.Unmarshal(plaintext, &client.message)
 	if err != nil {
 		log.Printf("- ERROR - Deserialisation error occured for incoming message - %s\n", err)
 	}
@@ -210,8 +250,9 @@ func unMarshalMessage(message []byte, client *client) {
 
 func encryptJSONAddToChannel(client *client, plaintextMessageJSON []byte) {
 	encrypted := encrypt(plaintextMessageJSON, serverPubKey)
-	client.data <- encrypted
-	log.Printf("- TO - %s - %s\n", client.socket.RemoteAddr().String(), plaintextMessageJSON)
+	encryptedAndValidated := generateEncryptedMessage(encrypted)
+	client.data <- encryptedAndValidated
+	log.Printf("- TO - %s - PT:%s\n", client.socket.RemoteAddr().String(), plaintextMessageJSON)
 	client.message = message{}
 }
 
@@ -222,4 +263,20 @@ func generateHangmanJSONMessage(msg []byte) []byte {
 		log.Printf("- ENCODING - %s", err)
 	}
 	return messageBytes
+}
+
+// Parse a byte representation of a message struct into a encryptedMessage struct and
+// attach a message authentication token (signed copy of the message) to the encrypted messageStruct
+func generateEncryptedMessage(messageBytes []byte) []byte {
+	// we don't sign the byte encoded representation of the message struct for comms to the server
+	// because we don't have certificates for the clients, and i need to trust the server, but don't care
+	// if the clients go rogue.
+	enc := encryptedMessage{A: messageBytes}
+	// enc.Sign(&privkey)
+
+	benc, err := json.Marshal(enc)
+	if err != nil {
+		log.Printf("- ENCODING - %s", err)
+	}
+	return benc
 }

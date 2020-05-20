@@ -29,6 +29,7 @@ type client struct {
 	pubkey    rsa.PublicKey
 	encrypted bool
 	message   message
+	encmsg    encryptedMessage
 }
 
 type message struct {
@@ -38,8 +39,16 @@ type message struct {
 	Signature []byte `json:",omitempty"`
 }
 
+// encryptedMessage ... Maintains two fields, A is the encrypted message and the other
+// is the MAC validation/signature field.
+type encryptedMessage struct {
+	A []byte `json:"A,omitempty"`
+	B []byte `json:"B,omitempty"`
+}
+
 // serverPrivKey and serverPubKey are RSA 2048 byte length keys
 var serverPrivKey, serverPubKey, serverPubKeyJSON = initialiseEncryption()
+var serverSignPrivKey = initialiseSigning()
 
 // start ... handle connection and disconnection of clients
 // from the clientManager.
@@ -75,6 +84,8 @@ func (manager *clientManager) sendData(client *client) {
 			if !ok {
 				return
 			}
+			// apply some error handling around this;
+			// message = append(message, '\n')
 			_, err := client.socket.Write(message)
 			// length, err := client.socket.Write(message)
 			if err != nil {
