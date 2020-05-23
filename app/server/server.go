@@ -22,14 +22,16 @@ type clientManager struct {
 // client ... struct that represents a client socket, the data channel
 // to send and receive information on, and currently unused state & guid
 type client struct {
-	socket    net.Conn
-	data      chan []byte
-	state     HangmanState
-	guid      string
-	pubkey    rsa.PublicKey
-	encrypted bool
-	message   message
-	encmsg    encryptedMessage
+	socket       net.Conn
+	data         chan []byte
+	state        HangmanState
+	guid         string
+	pubkey       rsa.PublicKey
+	encrypted    bool
+	message      message
+	encmsg       encryptedMessage
+	symmetricKey []byte
+	gameHash     []byte
 }
 
 type message struct {

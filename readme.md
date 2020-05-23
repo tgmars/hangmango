@@ -111,11 +111,14 @@ Certificate held by the client needs to be a chain including the CA?
 
 **Signing** - The encrypted messages must be signed to ensure their authenticity. 
 
-**Sequencing** - A message sequence could be implemented to ensure that clients only receive the message currently intended for them. 
+**Sequencing** - A message sequence could be implemented to ensure that clients only receive the message currently intended for them. Using a nonce in the AEAD GCM encryption means that replay attacks won't be effective; nor can sending two 
 
 **Verified authenticity of the key exchange**
 Because two keypairs are used for encryption and signing, it's important to verify that when a hangmango client requests a new key from a server, that they're interacting with a server that can demonstrate itself as an authenticate hangmango server, trusted to distribute a hangmango public key for encrypted key exchanges. 
-**Client uses its private key to sign messages**
+
+**Authenticated encryption**
+AEAD encryption in GCM mode (with nonce) is used following a verified key exchange. The nonce is sent along with each encryptedMessage{} struct as the B field to prevent replay attacks on the protocol.
+
 ### Improvements ###
 Encrypt private.pem on disk
 

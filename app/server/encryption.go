@@ -2,12 +2,15 @@ package main
 
 import (
 	"bufio"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"io"
 	"log"
 	"os"
 )
@@ -104,6 +107,59 @@ func decrypt(message []byte, privkey rsa.PrivateKey) []byte {
 	if err != nil {
 		log.Printf("- ERROR - Decryption - Output will not be passed on - %s", err)
 		return nil
+	}
+	return plaintext
+}
+
+// generateAESKeyBytes ... returns securely generated random bytes.
+// Returns an error if it can't read from the OS's secure random source.
+func generateSymmetricKeyBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+// encryptAEADGCM ... encrypts the plaintext with AEAD in GCM mode
+// and panics if any cipher or block operations error.
+func encryptAEADGCM(key []byte, plaintext []byte) ([]byte, []byte) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// Never use more than 2^32 random nonces with a given key because of the risk of a repeat.
+	nonce := make([]byte, 12)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		panic(err.Error())
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return aesgcm.Seal(nil, nonce, plaintext, nil), nonce
+}
+
+// encryptAEADGCM ... encrypts the plaintext with AEAD in GCM mode
+// and panics if any cipher or block operations error.
+func decryptAEADGCM(key []byte, ciphertext []byte, nonce []byte) []byte {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		panic(err.Error())
 	}
 	return plaintext
 }

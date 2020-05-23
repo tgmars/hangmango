@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"io"
 	"log"
 )
 
@@ -40,19 +43,44 @@ func decrypt(message []byte, privkey rsa.PrivateKey) []byte {
 	return plaintext
 }
 
-// func sign(message []byte], privkey rsa.PrivateKey){
-// 	rng := rand.Reader
+// encryptAEADGCM ... encrypts the plaintext with AEAD in GCM mode
+// and panics if any cipher or block operations error.
+func encryptAEADGCM(key []byte, plaintext []byte) ([]byte, []byte) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err.Error())
+	}
 
-// // Only small messages can be signed directly; thus the hash of a
-// // message, rather than the message itself, is signed. This requires
-// // that the hash function be collision resistant. SHA-256 is the
-// // least-strong hash function that should be used for this at the time
-// // of writing (2016).
-// hashed := sha256.Sum256(message)
+	// Never use more than 2^32 random nonces with a given key because of the risk of a repeat.
+	nonce := make([]byte, 12)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		panic(err.Error())
+	}
 
-// signature, err := SignPKCS1v15(rng, rsaPrivateKey, crypto.SHA256, hashed[:])
-// if err != nil {
-//     fmt.Fprintf(os.Stderr, "Error from signing: %s\n", err)
-//     return
-// }
-// }
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return aesgcm.Seal(nil, nonce, plaintext, nil), nonce
+}
+
+// encryptAEADGCM ... encrypts the plaintext with AEAD in GCM mode
+// and panics if any cipher or block operations error.
+func decryptAEADGCM(key []byte, ciphertext []byte, nonce []byte) []byte {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		panic(err.Error())
+	}
+	return plaintext
+}
