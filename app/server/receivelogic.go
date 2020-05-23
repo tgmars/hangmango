@@ -42,9 +42,9 @@ func receiverLogic(client *client, message []byte, length int) {
 				// Check if a hash was sent in the message, if it was, compare it against the servers known.
 				// If it doesn't something has gone wrong and we kill? the game.
 				if len(client.message.Hash) > 0 && bytes.Equal(client.message.Hash, client.gameHash) {
-					log.Printf("- GAMEHASH - Gamehash sent from the client matched the server, we're proceeding - %s - %s", client.message.Hash, client.gameHash)
+					log.Printf("- GAMEHASH - Gamehash sent from the client matched the server, we're proceeding - %v - %v", client.message.Hash, client.gameHash)
 				} else if len(client.message.Hash) > 0 && !bytes.Equal(client.message.Hash, client.gameHash) {
-					log.Printf("- GAMEHASH - Gamehash sent from the client is wrong, something went awry, killing the game.. - %s - %s", client.message.Hash, client.gameHash)
+					log.Printf("- GAMEHASH - Gamehash sent from the client is wrong, something went awry, killing the game.. - %v - %v", client.message.Hash, client.gameHash)
 					client.socket.Close()
 				}
 				// Pass the plaintext message off to hangman to process it
