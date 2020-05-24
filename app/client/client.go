@@ -46,7 +46,7 @@ type encryptedMessage struct {
 }
 
 // Regex pattern for basic client side validation of string prior to sending to server.
-var regexpHangman = regexp.MustCompile("[a-zA-Z]+")
+var regexpHangman = regexp.MustCompile("[^a-zA-Z]+")
 
 // Regex pattern for basic client side validation of a string received from the server.
 var regexpValidServerMessage = regexp.MustCompile("^[a-zA-Z_0-9 ]{1,100}$")
@@ -147,7 +147,7 @@ func main() {
 		// Validate message is within the regex set.
 		match := regexpHangman.Match([]byte(message))
 		// Validate message is in the regex set & hasn't completely filled the buffer from ReadString (4096 bytes)
-		if match && (len([]byte(message)) <= 4095) {
+		if !match && (len([]byte(message)) <= 4095) {
 			// Use the message given what we've sent.
 			var guessForHashing string
 			if len([]byte(message)) == 1 {
@@ -165,7 +165,7 @@ func main() {
 				messageJSON = generateHangmanJSONMessage([]byte(message), nil)
 			}
 			encryptJSONAddToChannel(client, messageJSON)
-		} else if match == false {
+		} else if match == true {
 			fmt.Println("Input must be an upper or lowercase character in the english alphabet (a-z or A-Z).")
 		} else if len([]byte(message)) >= 4096 {
 			fmt.Println("Length of input must be less than 4096 bytes.")

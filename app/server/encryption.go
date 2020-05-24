@@ -111,7 +111,7 @@ func decrypt(message []byte, privkey rsa.PrivateKey) []byte {
 	return plaintext
 }
 
-// generateAESKeyBytes ... returns securely generated random bytes.
+// generateSymmetricKeyBytes ... returns securely generated random bytes.
 // Returns an error if it can't read from the OS's secure random source.
 func generateSymmetricKeyBytes(n int) ([]byte, error) {
 	b := make([]byte, n)
